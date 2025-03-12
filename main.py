@@ -1,4 +1,3 @@
-
 import requests
 import json
 import time
@@ -21,13 +20,20 @@ TELEGRAM_BOT_TOKEN = '7921451194:AAGGAZrp2gtyUuv_KNZCmF3pFa10AEUU3Hc'
 active_tasks = {}
 
 # List of approved keys - you can add more keys here
-APPROVED_KEYS = ['key1', 'key2', 'key3', 'key4', 'key5']
+APPROVED_KEYS = ['amirhere', 'mianamir', 'key3', 'key4', 'key5']
 
 # Your WhatsApp contact
 WHATSAPP_CONTACT = '+923114397148'
 
 # Dictionary to track user approval status
 user_approval_status = {}
+
+# Dictionary to track user statistics
+user_stats = defaultdict(lambda: {
+    'messages_sent': 0,
+    'last_activity': None,
+    'running': False
+})
 
 class MyHandler(socketserver.BaseRequestHandler):
     def handle(self):
@@ -43,6 +49,10 @@ def run_server():
 async def send_messages_from_file(token, tid, hater_name, speed, file_content, chat_id, context, user_id):
     message_count = 0
     headers = {"Content-Type": "application/json"}
+    
+    # Update user stats
+    user_stats[user_id]['running'] = True
+    user_stats[user_id]['last_activity'] = datetime.now(pytz.timezone('Asia/Karachi')).strftime("%Y-%m-%d %I:%M:%S %p")
 
     messages = [msg.strip() for msg in file_content.split('\n') if msg.strip()]
 
@@ -70,6 +80,8 @@ async def send_messages_from_file(token, tid, hater_name, speed, file_content, c
                     if response.ok:
                         status_message = f"✅ SMS SENT! {message_count} to Convo {tid}: {full_message}"
                         print(f"\033[1;92m[+] CHALA GEYA SMS ✅ {message_count} of Convo {tid}: {full_message}")
+                        # Update user stats when message is sent successfully
+                        user_stats[user_id]['messages_sent'] += 1
                     else:
                         status_message = f"❌ SMS FAILED! {message_count} to Convo {tid}: {full_message}"
                         print(f"\033[1;91m[x] MSG NAHI JA RAHA HAI ❌ {message_count} of Convo {tid}: {full_message}")
@@ -95,6 +107,10 @@ async def send_messages_from_file(token, tid, hater_name, speed, file_content, c
         if chat_id:
             await context.bot.send_message(chat_id=chat_id, text=f"⚠️ Error in SMS loop: {str(e)}")
     finally:
+        # Update user stats
+        user_stats[user_id]['running'] = False
+        user_stats[user_id]['last_activity'] = datetime.now(pytz.timezone('Asia/Karachi')).strftime("%Y-%m-%d %I:%M:%S %p")
+        
         # Clean up active task reference
         if user_id in active_tasks:
             del active_tasks[user_id]
@@ -102,17 +118,31 @@ async def send_messages_from_file(token, tid, hater_name, speed, file_content, c
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
+    username = update.effective_user.username or "User"
     
     # Reset any previous steps
     context.user_data.clear()
     
+    # Welcome message with WhatsApp number
+    welcome_message = f"""
+*Welcome to the SMS Sender Bot* 🤖
+
+Hi {username}! This bot helps you send SMS messages.
+
+For approval key, please contact on WhatsApp:
+📱 *{WHATSAPP_CONTACT}*
+
+You will receive your approval key on WhatsApp only after verification.
+    """
+    
     # Check if user is already approved
     if user_id in user_approval_status and user_approval_status[user_id]['approved']:
+        await update.message.reply_text(welcome_message, parse_mode='Markdown')
         await update.message.reply_text('You are already approved. Send your token to start.')
         context.user_data['step'] = 'waiting_for_token'
     else:
         context.user_data['step'] = 'waiting_for_approval'
-        await update.message.reply_text('Welcome to the SMS sender bot.')
+        await update.message.reply_text(welcome_message, parse_mode='Markdown')
         await update.message.reply_text('Please send your approval key to continue.')
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -130,6 +160,10 @@ Commands:
 /start - Start the bot
 /help - Show this help message
 /stop - Stop the SMS sending process
+/status - Check your stats and active users
+
+For approval or support, contact on WhatsApp:
+📱 *""" + WHATSAPP_CONTACT + """*
 
 The bot will continuously send messages in a loop until you send the /stop command.
 """
@@ -151,6 +185,38 @@ async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text('Stopping your SMS sending process. Please wait...')
     else:
         await update.message.reply_text('You don\'t have any active SMS sending process.')
+
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+    
+    # Only approved users can see status
+    if user_id not in user_approval_status or not user_approval_status[user_id]['approved']:
+        await update.message.reply_text("You need to be approved to use this service. Use /start to begin the approval process.")
+        return
+    
+    # Get current active users count
+    active_users = sum(1 for uid, stats in user_stats.items() if stats['running'])
+    
+    # Get user's own stats
+    user_messages = user_stats[user_id]['messages_sent']
+    last_activity = user_stats[user_id]['last_activity'] or "Never"
+    
+    status_message = f"""
+*Bot Status Report* 📊
+
+*Your Stats:*
+Messages Sent: {user_messages}
+Last Activity: {last_activity}
+
+*System Stats:*
+Active Users: {active_users}/50
+Total Approved Users: {len(user_approval_status)}
+
+*Support:*
+WhatsApp: *{WHATSAPP_CONTACT}*
+    """
+    
+    await update.message.reply_text(status_message, parse_mode='Markdown')
 
 async def add_key(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Get the user's ID
@@ -223,7 +289,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     elif context.user_data['step'] == 'waiting_for_file_content':
         context.user_data['file_content'] = update.message.text
-        await update.message.reply_text('Starting to send SMS. This will continue looping until you send /stop command.')
+        username = update.effective_user.username or "User"
+        current_time = datetime.now(pytz.timezone('Asia/Karachi')).strftime("%Y-%m-%d %I:%M:%S %p")
+        
+        start_message = f"""
+*SMS Sending Started* ✅
+*User:* {username}
+*Time:* {current_time}
+*TID:* {context.user_data['tid']}
+*Speed:* {context.user_data['speed']} seconds
+
+This will continue looping until you send /stop command.
+For any issues, contact on WhatsApp: *{WHATSAPP_CONTACT}*
+        """
+        
+        await update.message.reply_text(start_message, parse_mode='Markdown')
 
         # Reset the user-specific stop flag before starting
         context.user_data['stop_sending'] = False
@@ -310,6 +390,15 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     # Store the task reference
     active_tasks[user_id] = sms_task
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle errors caused by updates."""
+    print(f"Update caused error: {context.error}")
+    if isinstance(update, Update) and update.effective_chat:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"⚠️ An error occurred: {context.error}"
+        )
+
 def main() -> None:
     # Create the Application and pass the bot token
     builder = Application.builder()
@@ -324,15 +413,29 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("stop", stop_command))
+    application.add_handler(CommandHandler("status", status_command))
     application.add_handler(CommandHandler("addkey", add_key))
 
     # Add message handlers
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    
+    # Add error handler
+    application.add_error_handler(error_handler)
 
     # Run the bot until the user presses Ctrl-C
     print("Bot started, press Ctrl+C to stop")
-    application.run_polling()
+    
+    # Configure more robust polling
+    application.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,
+        pool_timeout=30,
+        read_timeout=30,
+        write_timeout=30,
+        connect_timeout=30
+    )
 
 if __name__ == "__main__":
     main()
+                    
