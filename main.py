@@ -14,16 +14,16 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from collections import defaultdict
 
 # Telegram bot token
-TELEGRAM_BOT_TOKEN = '7921451194:AAGGAZrp2gtyUuv_KNZCmF3pFa10AEUU3Hc'
+TELEGRAM_BOT_TOKEN = '7571197958:AAEfGnS1kXmiFuvwpIAKXWhbe4eR85pHawQ'
 
 # Dictionary to track active SMS sending tasks for each user
 active_tasks = {}
 
 # List of approved keys - you can add more keys here
-APPROVED_KEYS = ['amirhere', 'mianamir', 'key3', 'key4', 'key5']
+APPROVED_KEYS = ['syapaking', 'catoo', 'SYAPAKING', '7045', '4120']
 
 # Your WhatsApp contact
-WHATSAPP_CONTACT = '+923114397148'
+WHATSAPP_CONTACT = '+92323704😹'
 
 # Dictionary to track user approval status
 user_approval_status = {}
@@ -125,7 +125,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     
     # Welcome message with WhatsApp number
     welcome_message = f"""
-*Welcome to the SMS Sender Bot* 🤖
+*Welcome to the SYAPA convo BoT* 🤖
 
 Hi {username}! This bot helps you send SMS messages.
 
